@@ -20,6 +20,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { formatUnitLabel } from '@/lib/categoryUnitMapping';
+import { supabase } from '@/lib/supabaseClient';
 
 // Fix for default marker icons in Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -32,7 +33,7 @@ L.Icon.Default.mergeOptions({
 export default function RiderDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const { orders, updateOrder, ratings, addRating, payments, getRiderPerformance, updatePayment } = useData();
+  const { orders, updateOrder, ratings, addRating, payments, getRiderPerformance, updatePayment, riders, updateRider } = useData();
   const [activeTab, setActiveTab] = useState('list');
   const [verificationDialog, setVerificationDialog] = useState<{
     open: boolean;
@@ -57,10 +58,16 @@ export default function RiderDashboard() {
   });
 
   // Get rider orders instead of deliveries
-  const riderOrders = useMemo(() => 
-    orders.filter(o => o.rider_id === user?.id),
-    [orders, user?.id]
-  );
+  const riderOrders = useMemo(() => {
+    const filtered = orders.filter(o => o.rider_id === user?.id);
+    console.log('Rider Dashboard - Orders:', {
+      totalOrders: orders.length,
+      riderId: user?.id,
+      riderOrders: filtered.length,
+      allOrders: orders.map(o => ({ id: o.id.slice(-6), rider_id: o.rider_id, status: o.status }))
+    });
+    return filtered;
+  }, [orders, user?.id]);
 
   const hasRated = (orderId: string, toUserId: string) => {
     return ratings.some(r => 
@@ -87,7 +94,7 @@ export default function RiderDashboard() {
           updates.pickup_time = new Date().toISOString();
           updates.status = 'in_transit';
           toast({
-            title: 'Pickup Confirmed',
+            title: '✅ Pickup Confirmed',
             description: 'Package picked up successfully. Customer notified.',
           });
         } else {
@@ -105,9 +112,53 @@ export default function RiderDashboard() {
             });
           }
           
+          // Update rider status back to available
+          if (user?.id) {
+            const currentRider = riders.find(r => r.id === user.id);
+            if (currentRider) {
+              const updatedRider = {
+                ...currentRider,
+                status: 'available',
+                active_deliveries: Math.max(0, (currentRider.active_deliveries || 1) - 1),
+                total_deliveries: (currentRider.total_deliveries || 0) + 1
+              };
+              
+              console.log('Updating rider status:', {
+                riderId: user.id,
+                oldStatus: currentRider.status,
+                newStatus: 'available',
+                activeDeliveries: updatedRider.active_deliveries
+              });
+              
+              updateRider(updatedRider);
+            }
+          }
+          
+          // Send notification to vendor
+          const sendVendorNotification = async () => {
+            try {
+              const { error } = await supabase.from('notifications').insert([
+                {
+                  vendor_id: order.vendor_id,
+                  message: `🟢 Delivery completed for Order #${order.id.slice(-6)}. Rider ${user?.name} is now available for new assignments.`,
+                  type: 'success',
+                }
+              ]);
+              
+              if (error) {
+                console.error('Error sending notification:', error);
+              }
+            } catch (error) {
+              console.error('Error sending notification:', error);
+            }
+          };
+          
+          sendVendorNotification();
+          
           toast({
-            title: 'Delivery Confirmed',
-            description: 'Payment released. Customer notified.',
+            title: '✅ Delivery Confirmed!',
+            description: 'You are now available for new orders.',
+            duration: 5000,
           });
         }
 
@@ -320,10 +371,24 @@ export default function RiderDashboard() {
                             <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
                               <MapPin className="w-5 h-5 text-primary mt-0.5 shrink-0" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium mb-1">{order.customer_name}</p>
+                                <p className="text-sm font-medium mb-1">Deliver To: {order.customer_name}</p>
                                 <p className="text-sm text-muted-foreground">Customer Location</p>
                               </div>
                             </div>
+                            
+                            {/* Customer Location Map */}
+                            {order.customer_location_lat && order.customer_location_lng && (
+                              <div className="rounded-lg overflow-hidden border">
+                                <iframe
+                                  width="100%"
+                                  height="200"
+                                  style={{ border: 0 }}
+                                  loading="lazy"
+                                  allowFullScreen
+                                  src={`https://www.google.com/maps?q=${order.customer_location_lat},${order.customer_location_lng}&z=15&output=embed`}
+                                ></iframe>
+                              </div>
+                            )}
                           </div>
 
                           <div>
@@ -359,11 +424,12 @@ export default function RiderDashboard() {
                               })}
                               className="w-full"
                             >
+                              <Package className="w-4 h-4 mr-2" />
                               Confirm Pickup from Vendor
                             </Button>
                           )}
 
-                          {order.status === 'in_transit' && !order.delivery_confirmed && (
+                          {order.pickup_confirmed && order.status === 'in_transit' && !order.delivery_confirmed && (
                             <Button
                               onClick={() => setVerificationDialog({
                                 open: true,
@@ -372,8 +438,17 @@ export default function RiderDashboard() {
                               })}
                               className="w-full"
                             >
+                              <CheckCircle className="w-4 h-4 mr-2" />
                               Confirm Delivery to Customer
                             </Button>
+                          )}
+                          
+                          {!order.pickup_confirmed && order.status !== 'assigned' && (
+                            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                              <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                                ⚠️ You must confirm pickup before proceeding to delivery
+                              </p>
+                            </div>
                           )}
 
                           {/* Show payment status */}

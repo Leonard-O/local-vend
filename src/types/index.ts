@@ -122,35 +122,28 @@ export interface Order {
   customer_name: string;
   vendor_id: string;
   vendor_name: string;
-  rider_id?: string;
-  rider_name?: string;
-  products: Array<{
-    productId: string;
-    productName: string;
-    quantity: number;
-    price: number;
-    unit_type?: string | null;
-    unit_value?: number | null;
-    unit_label?: string | null;
-  }>;
+  rider_id: string | null;
+  rider_name: string | null;
+  products: OrderProduct[];
   total_amount: number;
   status: DeliveryStatus;
   delivery_code: string;
-  pickup_confirmed?: boolean;
-  delivery_confirmed?: boolean;
-  pickup_time?: string;
-  delivery_time?: string;
-  distance_km?: number;
-  eta_minutes?: number;
-  customer_location_lat?: number;
-  customer_location_lng?: number;
-  vendor_location_lat?: number;
-  vendor_location_lng?: number;
-  rider_location_lat?: number;
-  rider_location_lng?: number;
+  pickup_code?: string;
+  pickup_confirmed: boolean;
+  delivery_confirmed: boolean;
+  pickup_time: string | null;
+  delivery_time: string | null;
+  distance_km: number | null;
+  eta_minutes: number | null;
+  customer_location_lat: number | null;
+  customer_location_lng: number | null;
+  vendor_location_lat: number | null;
+  vendor_location_lng: number | null;
+  rider_location_lat: number | null;
+  rider_location_lng: number | null;
+  notes: string;
   created_at: string;
   updated_at: string;
-  notes?: string;
 }
 
 export interface Rating {
@@ -181,4 +174,13 @@ export interface RiderPerformance {
 export interface VendorWithDistance extends Vendor {
   distance?: number;
   products: Product[];
+}
+
+export interface Notification {
+  id: string;
+  vendor_id: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  is_read: boolean;
+  created_at: string;
 }

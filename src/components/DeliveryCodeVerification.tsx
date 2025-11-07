@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { QrCode, CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Package } from 'lucide-react';
 import { Order } from '@/types';
 
 interface DeliveryCodeVerificationProps {
@@ -22,44 +22,64 @@ export default function DeliveryCodeVerification({
   onVerify
 }: DeliveryCodeVerificationProps) {
   const [code, setCode] = useState('');
-  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
 
   const handleVerify = () => {
-    setVerifying(true);
     setError('');
-
-    // Simulate verification delay
-    setTimeout(() => {
-      // Strict comparison - must match exactly
-      if (code.trim() === order.deliveryCode?.trim()) {
+    
+    if (verificationType === 'pickup') {
+      // Verify pickup code
+      if (code === order.pickup_code) {
         onVerify(true);
-        setCode('');
         onOpenChange(false);
+        setCode('');
       } else {
-        setError('Invalid code. Please try again.');
-        onVerify(false);
+        setError('Invalid pickup code. Please confirm with the vendor.');
       }
-      setVerifying(false);
-    }, 500);
+    } else {
+      // Verify delivery code
+      if (code === order.delivery_code) {
+        onVerify(true);
+        onOpenChange(false);
+        setCode('');
+      } else {
+        setError('Invalid delivery code. Please ask the customer for the correct code.');
+      }
+    }
   };
 
-  const handleScanQR = () => {
-    // Placeholder for QR scanning functionality
-    alert('QR Scanner would open here. For demo, use code: ' + order.deliveryCode);
+  const handleClose = () => {
+    setCode('');
+    setError('');
+    onOpenChange(false);
   };
+
+  const expectedCodeLength = verificationType === 'pickup' 
+    ? (order.pickup_code?.length || 6) 
+    : (order.delivery_code?.length || 5);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-white">
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>
-            {verificationType === 'pickup' ? 'Confirm Pickup' : 'Confirm Delivery'}
+          <DialogTitle className="flex items-center gap-2">
+            {verificationType === 'pickup' ? (
+              <>
+                <Package className="w-5 h-5" />
+                Confirm Pickup from Vendor
+              </>
+            ) : (
+              <>
+                <CheckCircle className="w-5 h-5" />
+                Confirm Delivery to Customer
+              </>
+            )}
           </DialogTitle>
           <DialogDescription>
             {verificationType === 'pickup' 
-              ? 'Enter the vendor\'s verification code or scan the QR code on the package.'
-              : 'Enter the customer\'s verification code or scan their QR code.'}
+              ? 'Enter the pickup code provided by the vendor to confirm you have collected the package.'
+              : 'Enter the delivery code provided by the customer to confirm successful delivery.'
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -68,16 +88,14 @@ export default function DeliveryCodeVerification({
             <Label htmlFor="code">Verification Code</Label>
             <Input
               id="code"
-              placeholder="Enter 5-digit code"
+              placeholder={`Enter ${expectedCodeLength}-digit code`}
               value={code}
               onChange={(e) => {
-                // Only allow numbers and limit to delivery code length
-                const value = e.target.value.replace(/\D/g, '');
-                if (value.length <= (order.deliveryCode?.length || 5)) {
-                  setCode(value);
-                }
+                setCode(e.target.value.toUpperCase());
+                setError('');
               }}
-              className="text-center text-2xl tracking-widest"
+              className="text-center text-2xl tracking-widest font-mono"
+              maxLength={expectedCodeLength}
             />
             {error && (
               <div className="flex items-center gap-2 text-sm text-red-600">
@@ -87,33 +105,17 @@ export default function DeliveryCodeVerification({
             )}
           </div>
 
-          <div className="flex gap-2">
-            <Button
-              onClick={handleVerify}
-              disabled={code.length !== (order.deliveryCode?.length || 5) || verifying}
-              className="flex-1"
-            >
-              {verifying ? (
-                'Verifying...'
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Verify Code
-                </>
-              )}
-            </Button>
-            <Button
-              onClick={handleScanQR}
-              variant="outline"
-              className="flex-1"
-            >
-              <QrCode className="w-4 h-4 mr-2" />
-              Scan QR
-            </Button>
-          </div>
+          <Button
+            onClick={handleVerify}
+            disabled={code.length < 3}
+            className="w-full"
+          >
+            <CheckCircle className="w-4 h-4 mr-2" />
+            Verify Code
+          </Button>
 
           <div className="text-center text-sm text-muted-foreground">
-            Order ID: {order.id}
+            Order ID: #{order.id.slice(-6)}
           </div>
         </div>
       </DialogContent>

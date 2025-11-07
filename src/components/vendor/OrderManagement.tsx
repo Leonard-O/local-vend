@@ -75,6 +75,9 @@ export default function OrderManagement() {
     const rider = riders.find(r => r.id === selectedRiderId);
     if (!rider) return;
 
+    // Generate pickup code
+    const pickupCode = `PK-${Math.floor(100000 + Math.random() * 900000)}`;
+
     // Calculate ETA based on distance
     const riderDistance = rider.location_lat && rider.location_lng && assignRiderDialog.order.vendor_location_lat && assignRiderDialog.order.vendor_location_lng
       ? calculateDistance(
@@ -96,12 +99,13 @@ export default function OrderManagement() {
       rider_location_lng: rider.location_lng,
       status: 'assigned' as DeliveryStatus,
       eta_minutes: etaToVendor + etaToCustomer,
+      pickup_code: pickupCode,
       updated_at: new Date().toISOString(),
     };
 
     updateOrder(updatedOrder);
 
-    // Update rider status
+    // Update rider status to busy (on_delivery)
     updateRider({
       ...rider,
       status: 'busy',
@@ -110,7 +114,8 @@ export default function OrderManagement() {
 
     toast({
       title: '✅ Rider Assigned Successfully',
-      description: `${rider.name} will arrive in ~${etaToVendor} minutes to pick up the order`,
+      description: `${rider.name} will arrive in ~${etaToVendor} minutes. Pickup code: ${pickupCode}`,
+      duration: 8000,
     });
 
     setAssignRiderDialog({ open: false, order: null });
@@ -177,6 +182,12 @@ export default function OrderManagement() {
   // Get available riders sorted by distance from vendor
   const getAvailableRiders = (order: Order) => {
     const availableRiders = riders.filter(r => r.status === 'available');
+    
+    console.log('OrderManagement: Filtering riders:', {
+      totalRiders: riders.length,
+      availableRiders: availableRiders.length,
+      allRidersStatus: riders.map(r => ({ id: r.id.slice(-6), name: r.name, status: r.status, activeDeliveries: r.active_deliveries }))
+    });
     
     if (!order.vendor_location_lat || !order.vendor_location_lng) {
       return availableRiders;
@@ -284,20 +295,49 @@ export default function OrderManagement() {
 
                         {/* Rider Info */}
                         {rider && (
-                          <div className="flex items-center gap-3 p-4 bg-blue-950/50 border-2 border-blue-800 rounded-lg">
-                            <Bike className="w-5 h-5 text-blue-400" />
-                            <div className="flex-1">
-                              <p className="text-sm font-bold">Assigned Rider</p>
-                              <p className="text-sm font-medium text-muted-foreground">{rider.name}</p>
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-3 p-4 bg-blue-950/50 border-2 border-blue-800 rounded-lg">
+                              <Bike className="w-5 h-5 text-blue-400" />
+                              <div className="flex-1">
+                                <p className="text-sm font-bold">Assigned Rider</p>
+                                <p className="text-sm font-medium text-muted-foreground">{rider.name}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Phone className="w-4 h-4" />
+                                <span className="text-sm font-medium">{rider.phone}</span>
+                              </div>
+                              {order.eta_minutes && (
+                                <div className="flex items-center gap-1 text-sm font-medium">
+                                  <Clock className="w-4 h-4" />
+                                  <span>{order.eta_minutes} min</span>
+                                </div>
+                              )}
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Phone className="w-4 h-4" />
-                              <span className="text-sm font-medium">{rider.phone}</span>
-                            </div>
-                            {order.eta_minutes && (
-                              <div className="flex items-center gap-1 text-sm font-medium">
-                                <Clock className="w-4 h-4" />
-                                <span>{order.eta_minutes} min</span>
+                            
+                            {/* Pickup Code Display */}
+                            {order.pickup_code && !order.pickup_confirmed && (
+                              <div className="p-4 bg-amber-950/50 border-2 border-amber-600 rounded-lg">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <p className="text-sm font-bold text-amber-200 mb-1">Pickup Confirmation Code</p>
+                                    <p className="text-xs text-amber-300">Share this code with the rider for pickup verification</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-2xl font-bold text-amber-100 tracking-wider">{order.pickup_code}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {order.pickup_confirmed && (
+                              <div className="flex items-center gap-2 p-3 bg-green-950/50 border border-green-800 rounded-lg">
+                                <CheckCircle className="w-5 h-5 text-green-400" />
+                                <div>
+                                  <p className="text-sm font-medium text-green-200">Pickup Confirmed</p>
+                                  <p className="text-xs text-green-300">
+                                    {order.pickup_time && `at ${new Date(order.pickup_time).toLocaleTimeString()}`}
+                                  </p>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -382,7 +422,18 @@ export default function OrderManagement() {
                             <Bike className="w-5 h-5" />
                           </div>
                           <div>
-                            <p className="font-semibold">{rider.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold">{rider.name}</p>
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                  rider.status === 'available' 
+                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                }`}
+                              >
+                                {rider.status === 'available' ? '🟢 Available' : '🔴 Busy'}
+                              </span>
+                            </div>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                               <MapPin className="w-3 h-3" />
                               <span>{rider.distanceFromVendor.toFixed(1)} km away</span>

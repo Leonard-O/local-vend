@@ -162,6 +162,41 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          type: string | null
+          vendor_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          type?: string | null
+          vendor_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          type?: string | null
+          vendor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           created_at: string | null
@@ -176,6 +211,7 @@ export type Database = {
           eta_minutes: number | null
           id: string
           notes: string | null
+          pickup_code: string | null
           pickup_confirmed: boolean | null
           pickup_time: string | null
           products: Json
@@ -204,6 +240,7 @@ export type Database = {
           eta_minutes?: number | null
           id?: string
           notes?: string | null
+          pickup_code?: string | null
           pickup_confirmed?: boolean | null
           pickup_time?: string | null
           products: Json
@@ -232,6 +269,7 @@ export type Database = {
           eta_minutes?: number | null
           id?: string
           notes?: string | null
+          pickup_code?: string | null
           pickup_confirmed?: boolean | null
           pickup_time?: string | null
           products?: Json

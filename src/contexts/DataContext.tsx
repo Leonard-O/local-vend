@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { Product, Delivery, Rider, Vendor, Customer, Order, Rating, Payment, RiderPerformance } from '@/types';
+import { Product, Delivery, Rider, Vendor, Customer, Order, Rating, Payment, RiderPerformance, Notification } from '@/types';
 import { mockProducts, mockDeliveries, mockRiders, mockVendors, mockCustomers, mockOrders, mockRatings, mockPayments, calculatePerformanceScore } from '@/lib/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -16,6 +16,7 @@ interface DataContextType {
   orders: Order[];
   ratings: Rating[];
   payments: Payment[];
+  notifications: Notification[];
   addProduct: (product: Partial<Product>) => void;
   updateProduct: (productId: string, updates: Partial<Product>) => void;
   deleteProduct: (productId: string) => void;
@@ -35,6 +36,7 @@ interface DataContextType {
   updateRating: (rating: Rating) => void;
   addPayment: (payment: Payment) => void;
   updatePayment: (payment: Payment) => void;
+  markNotificationAsRead: (notificationId: string) => void;
   getRiderPerformance: () => RiderPerformance[];
   refreshData: () => void;
   loading: boolean;
@@ -54,6 +56,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Load initial data from Supabase
@@ -69,7 +72,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         { data: customersData, error: customersError },
         { data: deliveriesData, error: deliveriesError },
         { data: ratingsData, error: ratingsError },
-        { data: paymentsData, error: paymentsError }
+        { data: paymentsData, error: paymentsError },
+        { data: notificationsData, error: notificationsError }
       ] = await Promise.all([
         supabase.from('products').select('*'),
         supabase.from('orders').select('*').order('created_at', { ascending: false }),
@@ -78,7 +82,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         supabase.from('customers').select('*'),
         supabase.from('deliveries').select('*').order('created_at', { ascending: false }),
         supabase.from('ratings').select('*'),
-        supabase.from('payments').select('*')
+        supabase.from('payments').select('*'),
+        supabase.from('notifications').select('*').order('created_at', { ascending: false })
       ]);
 
       if (productsError) console.error('Products error:', productsError);
@@ -89,6 +94,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (deliveriesError) console.error('Deliveries error:', deliveriesError);
       if (ratingsError) console.error('Ratings error:', ratingsError);
       if (paymentsError) console.error('Payments error:', paymentsError);
+      if (notificationsError) console.error('Notifications error:', notificationsError);
 
       setProducts(productsData || []);
       setOrders(ordersData || []);
@@ -98,6 +104,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setDeliveries(deliveriesData || []);
       setRatings(ratingsData || []);
       setPayments(paymentsData || []);
+      setNotifications(notificationsData || []);
+      
+      console.log('Data loaded:', {
+        products: productsData?.length || 0,
+        orders: ordersData?.length || 0,
+        riders: ridersData?.length || 0,
+        vendors: vendorsData?.length || 0,
+        notifications: notificationsData?.length || 0
+      });
     } catch (error) {
       console.error('Error loading data:', error);
       toast({
@@ -116,31 +131,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Setup real-time subscriptions
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [productsData, deliveriesData, ridersData, vendorsData] = await Promise.all([
-          supabase.from('products').select('*'),
-          supabase.from('deliveries').select('*'),
-          supabase.from('riders').select('*'),
-          supabase.from('vendors').select('*'),
-        ]);
-
-        if (productsData.data) {
-          // Remove duplicates by ID
-          const uniqueProducts = Array.from(
-            new Map(productsData.data.map(p => [p.id, p])).values()
-          );
-          setProducts(uniqueProducts);
-        }
-        if (deliveriesData.data) setDeliveries(deliveriesData.data);
-        if (ridersData.data) setRiders(ridersData.data);
-        if (vendorsData.data) setVendors(vendorsData.data);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      }
-    };
-
-    fetchData();
+    // Load initial data
+    loadData();
 
     // Subscribe to realtime changes
     const productsChannel = supabase
@@ -228,12 +220,55 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       )
       .subscribe();
 
+    // Subscribe to riders for real-time status updates
+    const ridersChannel = supabase
+      .channel('riders-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'riders' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setRiders(prev => {
+            if (prev.some(r => r.id === payload.new.id)) {
+              return prev;
+            }
+            return [...prev, payload.new as Rider];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setRiders(prev => prev.map(r => r.id === payload.new.id ? payload.new as Rider : r));
+        } else if (payload.eventType === 'DELETE') {
+          setRiders(prev => prev.filter(r => r.id !== payload.old.id));
+        }
+      })
+      .subscribe();
+
+    // Subscribe to notifications for real-time vendor notifications
+    const notificationsChannel = supabase
+      .channel('notifications-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+        const newNotification = payload.new as Notification;
+        setNotifications(prev => [newNotification, ...prev]);
+        
+        // Show toast notification to vendor
+        if (user?.role === 'vendor' && newNotification.vendor_id === user.id) {
+          toast({
+            title: 'Delivery Completed',
+            description: newNotification.message,
+            duration: 8000,
+          });
+        }
+      })
+      .subscribe();
+
     return () => {
       if (ordersChannel) {
         supabase.removeChannel(ordersChannel);
       }
       if (productsChannel) {
         supabase.removeChannel(productsChannel);
+      }
+      if (ridersChannel) {
+        supabase.removeChannel(ridersChannel);
+      }
+      if (notificationsChannel) {
+        supabase.removeChannel(notificationsChannel);
       }
     };
   }, [user, toast]);
@@ -442,18 +477,45 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateRider = async (rider: Rider) => {
     try {
-      const { error } = await supabase
+      console.log('DataContext: Updating rider in Supabase:', {
+        riderId: rider.id,
+        riderName: rider.name,
+        oldStatus: riders.find(r => r.id === rider.id)?.status,
+        newStatus: rider.status,
+        activeDeliveries: rider.active_deliveries,
+        totalDeliveries: rider.total_deliveries
+      });
+
+      const { data, error } = await supabase
         .from('riders')
-        .update(rider)
-        .eq('id', rider.id);
+        .update({
+          status: rider.status,
+          active_deliveries: rider.active_deliveries,
+          total_deliveries: rider.total_deliveries,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', rider.id)
+        .select()
+        .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase update error:', error);
+        throw error;
+      }
+
+      console.log('DataContext: Rider updated successfully in Supabase:', data);
       setRiders(prev => prev.map(r => r.id === rider.id ? rider : r));
+      
+      toast({
+        title: '✅ Rider Status Updated',
+        description: `Rider ${rider.name} is now ${rider.status}`,
+        duration: 3000,
+      });
     } catch (error) {
       console.error('Error updating rider:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update rider',
+        description: 'Failed to update rider status',
         variant: 'destructive'
       });
     }
@@ -668,6 +730,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', notificationId);
+      
+      if (error) throw error;
+      setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n));
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
   const getRiderPerformance = (): RiderPerformance[] => {
     return riders.map(rider => {
       const riderRatings = ratings.filter(r => r.to_user_id === rider.id && r.role_type === 'rider');
@@ -707,6 +783,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         orders,
         ratings,
         payments,
+        notifications,
         addProduct,
         updateProduct,
         deleteProduct,
@@ -726,6 +803,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         updateRating,
         addPayment,
         updatePayment,
+        markNotificationAsRead,
         getRiderPerformance,
         refreshData,
         loading,
