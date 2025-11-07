@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import CreateDeliveryDialog from './CreateDeliveryDialog';
 import RatingDialog from '@/components/RatingDialog';
+import { formatUnitLabel } from '@/lib/categoryUnitMapping';
 
 export default function DeliveryManagement() {
   const { user } = useAuth();

@@ -1,12 +1,19 @@
 export interface Product {
   id: string;
+  vendor_id: string;
   name: string;
   description: string;
   price: number;
-  stock: number;
   category: string;
-  vendorId: string;
-  imageUrl?: string;
+  image_url?: string;
+  stock_quantity: number;
+  created_at?: string;
+  updated_at?: string;
+  // New unit fields (optional for backward compatibility)
+  unit_type?: string | null;
+  unit_value?: number | null;
+  unit_label?: string | null;
+  quantity_per_unit?: number | null;
 }
 
 export interface Rider {
@@ -15,12 +22,14 @@ export interface Rider {
   email: string;
   phone: string;
   status: 'available' | 'busy' | 'offline';
-  activeDeliveries: number;
-  locationLat?: number;
-  locationLng?: number;
+  active_deliveries: number;
+  location_lat?: number;
+  location_lng?: number;
   rating?: number;
-  totalDeliveries?: number;
-  averageDeliveryTime?: number; // in minutes
+  total_deliveries?: number;
+  average_delivery_time?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Vendor {
@@ -28,11 +37,13 @@ export interface Vendor {
   name: string;
   email: string;
   phone: string;
-  businessName: string;
+  business_name: string;
   address: string;
-  locationLat?: number;
-  locationLng?: number;
+  location_lat?: number;
+  location_lng?: number;
   rating?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Customer {
@@ -41,9 +52,11 @@ export interface Customer {
   email: string;
   phone: string;
   address?: string;
-  locationLat?: number;
-  locationLng?: number;
+  location_lat?: number;
+  location_lng?: number;
   rating?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type DeliveryStatus = 'pending' | 'assigned' | 'in_transit' | 'delivered' | 'failed';
@@ -52,100 +65,106 @@ export type PaymentStatus = 'pending' | 'held' | 'released' | 'failed';
 
 export interface Payment {
   id: string;
-  orderId: string;
-  customerId: string;
-  vendorId: string;
-  riderId?: string;
-  totalAmount: number;
-  vendorShare: number;
-  riderShare: number;
-  platformFee: number;
+  order_id: string;
+  customer_id: string;
+  vendor_id: string;
+  rider_id?: string;
+  total_amount: number;
+  vendor_share: number;
+  rider_share: number;
+  platform_fee: number;
   status: PaymentStatus;
-  mpesaTransactionId?: string;
-  createdAt: string;
-  releasedAt?: string;
+  mpesa_transaction_id?: string;
+  created_at: string;
+  released_at?: string;
 }
 
 export interface Delivery {
   id: string;
-  vendorId: string;
-  vendorName: string;
-  customerId?: string;
-  riderId?: string;
-  riderName?: string;
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
-  customerLocationLat?: number;
-  customerLocationLng?: number;
-  vendorLocationLat?: number;
-  vendorLocationLng?: number;
-  riderLocationLat?: number;
-  riderLocationLng?: number;
+  vendor_id: string;
+  vendor_name: string;
+  customer_id?: string;
+  rider_id?: string;
+  rider_name?: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_address: string;
+  customer_location_lat?: number;
+  customer_location_lng?: number;
+  vendor_location_lat?: number;
+  vendor_location_lng?: number;
+  rider_location_lat?: number;
+  rider_location_lng?: number;
   products: Array<{
     productId: string;
     productName: string;
     quantity: number;
     price: number;
+    unit_type?: string | null;
+    unit_value?: number | null;
+    unit_label?: string | null;
   }>;
-  totalAmount: number;
+  total_amount: number;
   status: DeliveryStatus;
-  deliveryCode?: string;
-  pickupConfirmed?: boolean;
-  deliveryConfirmed?: boolean;
-  pickupTime?: string;
-  deliveryTime?: string;
-  createdAt: string;
-  updatedAt: string;
+  delivery_code?: string;
+  pickup_confirmed?: boolean;
+  delivery_confirmed?: boolean;
+  pickup_time?: string;
+  delivery_time?: string;
+  created_at: string;
+  updated_at: string;
   notes?: string;
 }
 
 export interface Order {
   id: string;
-  customerId: string;
-  customerName: string;
-  vendorId: string;
-  vendorName: string;
-  riderId?: string;
-  riderName?: string;
+  customer_id: string;
+  customer_name: string;
+  vendor_id: string;
+  vendor_name: string;
+  rider_id?: string;
+  rider_name?: string;
   products: Array<{
     productId: string;
     productName: string;
     quantity: number;
     price: number;
+    unit_type?: string | null;
+    unit_value?: number | null;
+    unit_label?: string | null;
   }>;
-  totalAmount: number;
+  total_amount: number;
   status: DeliveryStatus;
-  deliveryCode: string;
-  pickupConfirmed?: boolean;
-  deliveryConfirmed?: boolean;
-  pickupTime?: string;
-  deliveryTime?: string;
-  distanceKm?: number;
-  etaMinutes?: number;
-  customerLocationLat?: number;
-  customerLocationLng?: number;
-  vendorLocationLat?: number;
-  vendorLocationLng?: number;
-  riderLocationLat?: number;
-  riderLocationLng?: number;
-  createdAt: string;
-  updatedAt: string;
+  delivery_code: string;
+  pickup_confirmed?: boolean;
+  delivery_confirmed?: boolean;
+  pickup_time?: string;
+  delivery_time?: string;
+  distance_km?: number;
+  eta_minutes?: number;
+  customer_location_lat?: number;
+  customer_location_lng?: number;
+  vendor_location_lat?: number;
+  vendor_location_lng?: number;
+  rider_location_lat?: number;
+  rider_location_lng?: number;
+  created_at: string;
+  updated_at: string;
   notes?: string;
 }
 
 export interface Rating {
   id: string;
-  fromUserId: string;
-  fromUserName: string;
-  toUserId: string;
-  toUserName: string;
-  roleType: 'vendor' | 'rider' | 'customer';
+  from_user_id: string;
+  from_user_name: string;
+  to_user_id: string;
+  to_user_name: string;
+  role_type: 'vendor' | 'rider' | 'customer';
   rating: number;
   feedback?: string;
-  orderId?: string;
-  createdAt: string;
-  updatedAt?: string;
+  order_id?: string;
+  created_at: string;
+  updated_at?: string;
   canEdit?: boolean;
 }
 
@@ -154,7 +173,7 @@ export interface RiderPerformance {
   riderName: string;
   averageRating: number;
   totalDeliveries: number;
-  averageDeliveryTime: number; // in minutes
+  averageDeliveryTime: number;
   performanceScore: number;
   rank?: number;
 }

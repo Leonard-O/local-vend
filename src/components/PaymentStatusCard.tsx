@@ -50,18 +50,18 @@ export default function PaymentStatusCard({ payment }: PaymentStatusCardProps) {
             </span>
           </Badge>
         </div>
-        <CardDescription>Order #{payment.orderId}</CardDescription>
+        <CardDescription>Order #{payment.order_id}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-sm text-muted-foreground">Total Amount</p>
-            <p className="text-lg font-semibold">KES {payment.totalAmount.toFixed(2)}</p>
+            <p className="text-lg font-semibold">KES {payment.total_amount.toFixed(2)}</p>
           </div>
-          {payment.mpesaTransactionId && (
+          {payment.mpesa_transaction_id && (
             <div>
               <p className="text-sm text-muted-foreground">M-Pesa ID</p>
-              <p className="text-sm font-mono">{payment.mpesaTransactionId}</p>
+              <p className="text-sm font-mono">{payment.mpesa_transaction_id}</p>
             </div>
           )}
         </div>
@@ -69,15 +69,15 @@ export default function PaymentStatusCard({ payment }: PaymentStatusCardProps) {
         <div className="border-t pt-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Vendor Share</span>
-            <span className="font-medium">KES {payment.vendorShare.toFixed(2)}</span>
+            <span className="font-medium">KES {payment.vendor_share.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Rider Fee</span>
-            <span className="font-medium">KES {payment.riderShare.toFixed(2)}</span>
+            <span className="font-medium">KES {payment.rider_share.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Platform Fee</span>
-            <span className="font-medium">KES {payment.platformFee.toFixed(2)}</span>
+            <span className="font-medium">KES {payment.platform_fee.toFixed(2)}</span>
           </div>
         </div>
 
@@ -87,9 +87,9 @@ export default function PaymentStatusCard({ payment }: PaymentStatusCardProps) {
           </div>
         )}
 
-        {payment.status === 'released' && payment.releasedAt && (
+        {payment.status === 'released' && payment.released_at && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
-            Payment released on {new Date(payment.releasedAt).toLocaleString()}
+            Payment released on {new Date(payment.released_at).toLocaleString()}
           </div>
         )}
       </CardContent>

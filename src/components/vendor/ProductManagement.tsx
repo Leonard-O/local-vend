@@ -6,7 +6,8 @@ import { Package, Plus, Edit, Trash2 } from 'lucide-react';
 import { Product } from '@/types';
 import { useData } from '@/contexts/DataContext';
 import { useAuth } from '@/contexts/AuthContext';
-import ProductDialog from './ProductDialog';
+import { ProductDialog } from './ProductDialog';
+import { formatUnitLabel } from '@/lib/categoryUnitMapping';
 
 export default function ProductManagement() {
   const { products, addProduct, updateProduct, deleteProduct } = useData();
@@ -15,7 +16,7 @@ export default function ProductManagement() {
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
 
   // Filter products to show only the current vendor's products
-  const vendorProducts = products.filter(p => p.vendorId === user?.id);
+  const vendorProducts = products.filter(p => p.vendor_id === user?.id);
 
   const handleAddProduct = () => {
     setEditingProduct(undefined);
@@ -33,11 +34,16 @@ export default function ProductManagement() {
     }
   };
 
-  const handleSaveProduct = (product: Product) => {
+  const handleSaveProduct = (productData: Partial<Product>) => {
     if (editingProduct) {
-      updateProduct(product);
+      // Update existing product
+      updateProduct(editingProduct.id, productData);
     } else {
-      addProduct(product);
+      // Add new product with vendor_id
+      addProduct({
+        ...productData,
+        vendor_id: user!.id,
+      });
     }
     setIsDialogOpen(false);
   };
@@ -52,9 +58,9 @@ export default function ProductManagement() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Products</h2>
+          <h2 className="text-2xl font-bold text-foreground">My Products</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your product inventory
+            Manage your product inventory and availability
           </p>
         </div>
         <Button onClick={handleAddProduct} className="gap-2">
@@ -82,13 +88,13 @@ export default function ProductManagement() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {vendorProducts.map((product) => {
-            const stockStatus = getStockStatus(product.stock);
+            const stockStatus = getStockStatus(product.stock_quantity);
             return (
               <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                {product.imageUrl && (
+                {product.image_url && (
                   <div className="aspect-video w-full overflow-hidden bg-muted">
                     <img
-                      src={product.imageUrl}
+                      src={product.image_url}
                       alt={product.name}
                       className="w-full h-full object-cover"
                     />
@@ -110,11 +116,18 @@ export default function ProductManagement() {
                 <CardContent className="space-y-3">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Price:</span>
-                    <span className="font-semibold text-lg">KES {product.price.toFixed(2)}</span>
+                    <div className="text-right">
+                      <div className="font-semibold text-lg">KES {product.price.toFixed(2)}</div>
+                      {product.unit_type && (
+                        <Badge variant="secondary" className="text-xs mt-1">
+                          {formatUnitLabel(product.unit_type, product.unit_value, product.unit_label)}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Stock:</span>
-                    <span className="font-medium">{product.stock} units</span>
+                    <span className="font-medium">{product.stock_quantity} units</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Category:</span>

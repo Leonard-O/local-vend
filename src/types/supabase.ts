@@ -357,7 +357,11 @@ export type Database = {
           image_url: string | null
           name: string
           price: number
-          stock: number | null
+          quantity_per_unit: number | null
+          stock_quantity: number | null
+          unit_label: string | null
+          unit_type: string | null
+          unit_value: number | null
           updated_at: string | null
           vendor_id: string | null
         }
@@ -369,7 +373,11 @@ export type Database = {
           image_url?: string | null
           name: string
           price: number
-          stock?: number | null
+          quantity_per_unit?: number | null
+          stock_quantity?: number | null
+          unit_label?: string | null
+          unit_type?: string | null
+          unit_value?: number | null
           updated_at?: string | null
           vendor_id?: string | null
         }
@@ -381,7 +389,11 @@ export type Database = {
           image_url?: string | null
           name?: string
           price?: number
-          stock?: number | null
+          quantity_per_unit?: number | null
+          stock_quantity?: number | null
+          unit_label?: string | null
+          unit_type?: string | null
+          unit_value?: number | null
           updated_at?: string | null
           vendor_id?: string | null
         }

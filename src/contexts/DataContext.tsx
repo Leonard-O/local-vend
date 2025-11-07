@@ -16,10 +16,10 @@ interface DataContextType {
   orders: Order[];
   ratings: Rating[];
   payments: Payment[];
-  addProduct: (product: Product) => void;
-  updateProduct: (product: Product) => void;
+  addProduct: (product: Partial<Product>) => void;
+  updateProduct: (productId: string, updates: Partial<Product>) => void;
   deleteProduct: (productId: string) => void;
-  addDelivery: (delivery: Delivery) => void;
+  addDelivery: (delivery: Omit<Delivery, 'id' | 'created_at' | 'updated_at'>) => void;
   updateDelivery: (delivery: Delivery) => void;
   addOrder: (order: Order) => void;
   updateOrder: (order: Order) => void;
@@ -62,14 +62,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       
       const [
-        { data: productsData },
-        { data: ordersData },
-        { data: ridersData },
-        { data: vendorsData },
-        { data: customersData },
-        { data: deliveriesData },
-        { data: ratingsData },
-        { data: paymentsData }
+        { data: productsData, error: productsError },
+        { data: ordersData, error: ordersError },
+        { data: ridersData, error: ridersError },
+        { data: vendorsData, error: vendorsError },
+        { data: customersData, error: customersError },
+        { data: deliveriesData, error: deliveriesError },
+        { data: ratingsData, error: ratingsError },
+        { data: paymentsData, error: paymentsError }
       ] = await Promise.all([
         supabase.from('products').select('*'),
         supabase.from('orders').select('*').order('created_at', { ascending: false }),
@@ -80,6 +80,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         supabase.from('ratings').select('*'),
         supabase.from('payments').select('*')
       ]);
+
+      if (productsError) console.error('Products error:', productsError);
+      if (ordersError) console.error('Orders error:', ordersError);
+      if (ridersError) console.error('Riders error:', ridersError);
+      if (vendorsError) console.error('Vendors error:', vendorsError);
+      if (customersError) console.error('Customers error:', customersError);
+      if (deliveriesError) console.error('Deliveries error:', deliveriesError);
+      if (ratingsError) console.error('Ratings error:', ratingsError);
+      if (paymentsError) console.error('Payments error:', paymentsError);
 
       setProducts(productsData || []);
       setOrders(ordersData || []);
@@ -107,12 +116,54 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Setup real-time subscriptions
   useEffect(() => {
-    loadData();
+    const fetchData = async () => {
+      try {
+        const [productsData, deliveriesData, ridersData, vendorsData] = await Promise.all([
+          supabase.from('products').select('*'),
+          supabase.from('deliveries').select('*'),
+          supabase.from('riders').select('*'),
+          supabase.from('vendors').select('*'),
+        ]);
 
-    let ordersChannel: RealtimeChannel;
-    
+        if (productsData.data) {
+          // Remove duplicates by ID
+          const uniqueProducts = Array.from(
+            new Map(productsData.data.map(p => [p.id, p])).values()
+          );
+          setProducts(uniqueProducts);
+        }
+        if (deliveriesData.data) setDeliveries(deliveriesData.data);
+        if (ridersData.data) setRiders(ridersData.data);
+        if (vendorsData.data) setVendors(vendorsData.data);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      }
+    };
+
+    fetchData();
+
+    // Subscribe to realtime changes
+    const productsChannel = supabase
+      .channel('products-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setProducts(prev => {
+            // Check if product already exists to prevent duplicates
+            if (prev.some(p => p.id === payload.new.id)) {
+              return prev;
+            }
+            return [...prev, payload.new as Product];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setProducts(prev => prev.map(p => p.id === payload.new.id ? payload.new as Product : p));
+        } else if (payload.eventType === 'DELETE') {
+          setProducts(prev => prev.filter(p => p.id !== payload.old.id));
+        }
+      })
+      .subscribe();
+
     // Subscribe to orders for real-time updates
-    ordersChannel = supabase
+    const ordersChannel = supabase
       .channel('orders-changes')
       .on(
         'postgres_changes',
@@ -181,11 +232,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (ordersChannel) {
         supabase.removeChannel(ordersChannel);
       }
+      if (productsChannel) {
+        supabase.removeChannel(productsChannel);
+      }
     };
   }, [user, toast]);
 
-  const addProduct = async (product: Product) => {
+  const addProduct = async (product: Partial<Product>) => {
     try {
+      // Ensure vendor_id is included
+      if (!product.vendor_id) {
+        throw new Error('Vendor ID is required to add a product');
+      }
+
       const { data, error } = await supabase
         .from('products')
         .insert([product])
@@ -194,30 +253,43 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       
       if (error) throw error;
       setProducts(prev => [...prev, data]);
-    } catch (error) {
+      
+      toast({
+        title: 'Product Added',
+        description: 'Your product has been added successfully',
+      });
+    } catch (error: any) {
       console.error('Error adding product:', error);
       toast({
         title: 'Error',
-        description: 'Failed to add product',
+        description: error.message || 'Failed to add product',
         variant: 'destructive'
       });
     }
   };
 
-  const updateProduct = async (product: Product) => {
+  const updateProduct = async (productId: string, updates: Partial<Product>) => {
     try {
       const { error } = await supabase
         .from('products')
-        .update(product)
-        .eq('id', product.id);
+        .update(updates)
+        .eq('id', productId);
       
       if (error) throw error;
-      setProducts(prev => prev.map(p => p.id === product.id ? product : p));
-    } catch (error) {
+      
+      setProducts(prev => prev.map(p => 
+        p.id === productId ? { ...p, ...updates } : p
+      ));
+      
+      toast({
+        title: 'Product Updated',
+        description: 'Your product has been updated successfully',
+      });
+    } catch (error: any) {
       console.error('Error updating product:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update product',
+        description: error.message || 'Failed to update product',
         variant: 'destructive'
       });
     }
@@ -242,23 +314,46 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const addDelivery = async (delivery: Delivery) => {
+  const addDelivery = async (delivery: Omit<Delivery, 'id' | 'created_at' | 'updated_at'>) => {
     try {
+      // Ensure products include unit information
+      const productsWithUnits = delivery.products.map(item => {
+        const product = products.find(p => p.id === item.productId);
+        return {
+          ...item,
+          unit_type: product?.unit_type || null,
+          unit_value: product?.unit_value || null,
+          unit_label: product?.unit_label || null,
+        };
+      });
+
       const { data, error } = await supabase
         .from('deliveries')
-        .insert([delivery])
+        .insert([{
+          ...delivery,
+          products: productsWithUnits,
+        }])
         .select()
         .single();
-      
+
       if (error) throw error;
-      setDeliveries(prev => [data, ...prev]);
+      
+      setDeliveries(prev => [...prev, data]);
+      
+      // Update product stock
+      for (const item of delivery.products) {
+        const product = products.find(p => p.id === item.productId);
+        if (product) {
+          await updateProduct(item.productId, {
+            stock_quantity: product.stock_quantity - item.quantity
+          });
+        }
+      }
+      
+      return data;
     } catch (error) {
       console.error('Error adding delivery:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to add delivery',
-        variant: 'destructive'
-      });
+      throw error;
     }
   };
 

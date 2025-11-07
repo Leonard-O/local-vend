@@ -43,10 +43,10 @@ export default function VendorDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const vendorProducts = products.filter(p => p.vendorId === user?.id);
-  const vendorDeliveries = deliveries.filter(d => d.vendorId === user?.id);
-  const vendorOrders = orders.filter(o => o.vendorId === user?.id);
-  const vendorPayments = payments.filter(p => p.vendorId === user?.id);
+  const vendorProducts = products.filter(p => p.vendor_id === user?.id);
+  const vendorDeliveries = deliveries.filter(d => d.vendor_id === user?.id);
+  const vendorOrders = orders.filter(o => o.vendor_id === user?.id);
+  const vendorPayments = payments.filter(p => p.vendor_id === user?.id);
 
   const totalRevenue = vendorPayments
     .filter(p => p.status === 'released')

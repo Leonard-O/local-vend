@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { toast } from '@/components/ui/use-toast';
 
 export type UserRole = 'vendor' | 'rider' | 'admin' | 'customer';
 
@@ -17,8 +19,8 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, role: UserRole) => Promise<void>;
-  logout: () => void;
+  register: (email: string, password: string, name: string, phone: string, role: 'vendor' | 'rider' | 'customer', additionalData?: any) => Promise<any>;
+  logout: () => Promise<void>;
   updateLocation: (lat: number, lng: number) => void;
   isLoading: boolean;
 }
@@ -30,129 +32,276 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored user session
-    const storedUser = localStorage.getItem('localvend_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
+    // Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserProfile(session.user.id, session.user.email!);
+      } else {
+        // Fallback to localStorage for demo users
+        const storedUser = localStorage.getItem('localvend_user');
+        if (storedUser) {
+          setUser(JSON.parse(storedUser));
+        }
+      }
+      setIsLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        loadUserProfile(session.user.id, session.user.email!);
+      } else {
+        setUser(null);
+        localStorage.removeItem('localvend_user');
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    // Mock authentication - in production, this would call an API
-    setIsLoading(true);
-    
-    // Demo users for testing
-    const demoUsers: Record<string, User> = {
-      'vendor@demo.com': { id: '1', email: 'vendor@demo.com', name: 'John Vendor', role: 'vendor', locationLat: 40.7128, locationLng: -74.0060, phone: '+1234567893', businessName: 'Fresh Local Market', address: '123 Market St, City' },
-      'rider@demo.com': { id: '2', email: 'rider@demo.com', name: 'Mike Rider', role: 'rider', locationLat: 40.7580, locationLng: -73.9855, phone: '+1234567890' },
-      'admin@demo.com': { id: '3', email: 'admin@demo.com', name: 'Admin User', role: 'admin' },
-      'customer@demo.com': { id: '4', email: 'customer@demo.com', name: 'Jane Customer', role: 'customer', locationLat: 40.7489, locationLng: -73.9680, phone: '+1234567894', address: '456 Oak Ave, City' },
-    };
+  const loadUserProfile = async (userId: string, email: string) => {
+    try {
+      // Try to load from vendors
+      const { data: vendor, error: vendorError } = await supabase
+        .from('vendors')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
 
-    // Check registered users from localStorage
-    const registeredUsers = JSON.parse(localStorage.getItem('localvend_registered_users') || '{}');
-    const allUsers = { ...demoUsers, ...registeredUsers };
+      if (vendor && !vendorError) {
+        const userData: User = {
+          id: vendor.id,
+          email: vendor.email,
+          name: vendor.name,
+          role: 'vendor',
+          phone: vendor.phone,
+          businessName: vendor.business_name,
+          address: vendor.address,
+          locationLat: vendor.location_lat,
+          locationLng: vendor.location_lng,
+        };
+        setUser(userData);
+        localStorage.setItem('localvend_user', JSON.stringify(userData));
+        return;
+      }
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+      // Try to load from riders
+      const { data: rider, error: riderError } = await supabase
+        .from('riders')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
 
-    const authenticatedUser = allUsers[email];
-    if (authenticatedUser && password === 'demo123') {
-      setUser(authenticatedUser);
-      localStorage.setItem('localvend_user', JSON.stringify(authenticatedUser));
-    } else {
-      throw new Error('Invalid credentials');
+      if (rider && !riderError) {
+        const userData: User = {
+          id: rider.id,
+          email: rider.email,
+          name: rider.name,
+          role: 'rider',
+          phone: rider.phone,
+          locationLat: rider.location_lat,
+          locationLng: rider.location_lng,
+        };
+        setUser(userData);
+        localStorage.setItem('localvend_user', JSON.stringify(userData));
+        return;
+      }
+
+      // Try to load from customers
+      const { data: customer, error: customerError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (customer && !customerError) {
+        const userData: User = {
+          id: customer.id,
+          email: customer.email,
+          name: customer.name,
+          role: 'customer',
+          phone: customer.phone,
+          address: customer.address,
+          locationLat: customer.location_lat,
+          locationLng: customer.location_lng,
+        };
+        setUser(userData);
+        localStorage.setItem('localvend_user', JSON.stringify(userData));
+        return;
+      }
+
+      // Check if admin (hardcoded for now)
+      if (email === 'admin@demo.com') {
+        const userData: User = {
+          id: userId,
+          email,
+          name: 'Admin User',
+          role: 'admin',
+        };
+        setUser(userData);
+        localStorage.setItem('localvend_user', JSON.stringify(userData));
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
     }
-    
-    setIsLoading(false);
   };
 
-  const register = async (email: string, password: string, name: string, role: UserRole) => {
+  const login = async (email: string, password: string) => {
     setIsLoading(true);
     
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      // Try Supabase auth first
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    // Check if user already exists
-    const registeredUsers = JSON.parse(localStorage.getItem('localvend_registered_users') || '{}');
-    const demoUsers = ['vendor@demo.com', 'rider@demo.com', 'admin@demo.com', 'customer@demo.com'];
-    
-    if (registeredUsers[email] || demoUsers.includes(email)) {
+      if (error) {
+        console.log('Supabase auth error:', error.message);
+        // Fallback to demo users
+        const demoUsers: Record<string, User> = {
+          'vendor@demo.com': { id: 'demo-vendor-1', email: 'vendor@demo.com', name: 'John Vendor', role: 'vendor', locationLat: 40.7128, locationLng: -74.0060, phone: '+1234567893', businessName: 'Fresh Local Market', address: '123 Market St, City' },
+          'rider@demo.com': { id: 'demo-rider-1', email: 'rider@demo.com', name: 'Mike Rider', role: 'rider', locationLat: 40.7580, locationLng: -73.9855, phone: '+1234567890' },
+          'admin@demo.com': { id: 'demo-admin-1', email: 'admin@demo.com', name: 'Admin User', role: 'admin' },
+          'customer@demo.com': { id: 'demo-customer-1', email: 'customer@demo.com', name: 'Jane Customer', role: 'customer', locationLat: 40.7489, locationLng: -73.9680, phone: '+1234567894', address: '456 Oak Ave, City' },
+        };
+
+        const authenticatedUser = demoUsers[email];
+        if (authenticatedUser && password === 'demo123') {
+          setUser(authenticatedUser);
+          localStorage.setItem('localvend_user', JSON.stringify(authenticatedUser));
+          toast({
+            title: 'Login Successful',
+            description: `Welcome back, ${authenticatedUser.name}!`,
+          });
+        } else {
+          throw new Error('Invalid credentials');
+        }
+      } else if (data.user) {
+        console.log('Supabase auth successful, loading profile for:', data.user.id);
+        await loadUserProfile(data.user.id, data.user.email!);
+        
+        // Check if user was loaded successfully
+        const storedUser = localStorage.getItem('localvend_user');
+        if (!storedUser) {
+          throw new Error('User profile not found. Please contact support.');
+        }
+        
+        toast({
+          title: 'Login Successful',
+          description: 'Welcome back!',
+        });
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      toast({
+        title: 'Login Failed',
+        description: error.message || 'Invalid credentials',
+        variant: 'destructive',
+      });
+      throw error;
+    } finally {
       setIsLoading(false);
-      throw new Error('User already exists');
     }
+  };
 
-    const newUser: User = {
-      id: `user_${Date.now()}`,
-      email,
-      name,
-      role,
-      locationLat: 40.7128,
-      locationLng: -74.0060,
-      phone: `+1${Math.floor(Math.random() * 9000000000 + 1000000000)}`,
-    };
+  const register = async (email: string, password: string, name: string, phone: string, role: 'vendor' | 'rider' | 'customer', additionalData?: any) => {
+    try {
+      // Create auth user with email confirmation disabled
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: undefined,
+          data: {
+            name,
+            phone,
+            role,
+          }
+        }
+      });
 
-    // Add role-specific fields
-    if (role === 'vendor') {
-      newUser.businessName = `${name}'s Store`;
-      newUser.address = '123 Main St, City';
-    } else if (role === 'customer') {
-      newUser.address = '456 Oak Ave, City';
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('User creation failed');
+
+      const userId = authData.user.id;
+
+      // Insert into role-specific table
+      if (role === 'vendor') {
+        const { error: vendorError } = await supabase
+          .from('vendors')
+          .insert([{
+            id: userId,
+            name,
+            email,
+            phone,
+            business_name: additionalData?.businessName || name,
+            address: additionalData?.address || '',
+            location_lat: additionalData?.locationLat,
+            location_lng: additionalData?.locationLng,
+            rating: 0
+          }]);
+        
+        if (vendorError) {
+          console.error('Error creating vendor record:', vendorError);
+          throw vendorError;
+        }
+      } else if (role === 'rider') {
+        const { error: riderError } = await supabase
+          .from('riders')
+          .insert([{
+            id: userId,
+            name,
+            email,
+            phone,
+            status: 'available',
+            active_deliveries: 0,
+            location_lat: additionalData?.locationLat,
+            location_lng: additionalData?.locationLng,
+            rating: 0,
+            total_deliveries: 0,
+            average_delivery_time: 0
+          }]);
+        
+        if (riderError) {
+          console.error('Error creating rider record:', riderError);
+          throw riderError;
+        }
+      } else if (role === 'customer') {
+        const { error: customerError } = await supabase
+          .from('customers')
+          .insert([{
+            id: userId,
+            name,
+            email,
+            phone,
+            address: additionalData?.address || '',
+            location_lat: additionalData?.locationLat,
+            location_lng: additionalData?.locationLng,
+            rating: 0
+          }]);
+        
+        if (customerError) {
+          console.error('Error creating customer record:', customerError);
+          throw customerError;
+        }
+      }
+
+      toast({
+        title: 'Registration Successful',
+        description: 'Your account has been created. You can now login.',
+      });
+
+      return authData;
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      toast({
+        title: 'Registration Failed',
+        description: error.message || 'Failed to create account',
+        variant: 'destructive',
+      });
+      throw error;
     }
-
-    registeredUsers[email] = newUser;
-    localStorage.setItem('localvend_registered_users', JSON.stringify(registeredUsers));
-    
-    // Also add to role-specific storage for DataContext
-    if (role === 'vendor') {
-      const vendors = JSON.parse(localStorage.getItem('localvend_vendors') || '[]');
-      vendors.push({
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        phone: newUser.phone,
-        businessName: newUser.businessName,
-        address: newUser.address,
-        locationLat: newUser.locationLat,
-        locationLng: newUser.locationLng,
-        rating: 5.0
-      });
-      localStorage.setItem('localvend_vendors', JSON.stringify(vendors));
-    } else if (role === 'rider') {
-      const riders = JSON.parse(localStorage.getItem('localvend_riders') || '[]');
-      riders.push({
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        phone: newUser.phone,
-        status: 'available',
-        activeDeliveries: 0,
-        locationLat: newUser.locationLat,
-        locationLng: newUser.locationLng,
-        rating: 5.0
-      });
-      localStorage.setItem('localvend_riders', JSON.stringify(riders));
-    } else if (role === 'customer') {
-      const customers = JSON.parse(localStorage.getItem('localvend_customers') || '[]');
-      customers.push({
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        phone: newUser.phone,
-        address: newUser.address,
-        locationLat: newUser.locationLat,
-        locationLng: newUser.locationLng,
-        rating: 5.0
-      });
-      localStorage.setItem('localvend_customers', JSON.stringify(customers));
-    }
-    
-    setUser(newUser);
-    localStorage.setItem('localvend_user', JSON.stringify(newUser));
-    
-    // Trigger storage event to refresh data in other contexts
-    window.dispatchEvent(new Event('storage'));
-    
-    setIsLoading(false);
   };
 
   const updateLocation = (lat: number, lng: number) => {
@@ -163,9 +312,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
     localStorage.removeItem('localvend_user');
+    toast({
+      title: 'Logged Out',
+      description: 'You have been logged out successfully',
+    });
   };
 
   return (

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Package, User, MapPin, Star, Bike, Clock } from 'lucide-react';
 import RatingDialog from '@/components/RatingDialog';
+import { formatUnitLabel } from '@/lib/categoryUnitMapping';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -40,16 +41,42 @@ export default function MyOrders() {
   });
 
   const customerOrders = useMemo(() => 
-    orders.filter(o => o.customerId === user?.id),
+    orders.filter(o => o.customer_id === user?.id),
     [orders, user?.id]
   );
 
   const hasRated = (orderId: string, toUserId: string) => {
     return ratings.some(r => 
-      r.fromUserId === user?.id && 
-      r.toUserId === toUserId && 
-      r.orderId === orderId
+      r.from_user_id === user?.id && 
+      r.to_user_id === toUserId && 
+      r.order_id === orderId
     );
+  };
+
+  const formatOrderDate = (dateString: string | undefined) => {
+    if (!dateString) return 'Date not available';
+    
+    try {
+      // Parse the date string - Supabase returns ISO 8601 format
+      const date = new Date(dateString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.error('Invalid date:', dateString);
+        return 'Date not available';
+      }
+      
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      console.error('Error parsing date:', dateString, error);
+      return 'Date not available';
+    }
   };
 
   const handleCloseRatingDialog = (open: boolean) => {
@@ -76,8 +103,8 @@ export default function MyOrders() {
       ) : (
         <div className="space-y-4">
           {customerOrders.map((order) => {
-            const hasRatedVendor = hasRated(order.id, order.vendorId);
-            const hasRatedRider = order.riderId ? hasRated(order.id, order.riderId) : false;
+            const hasRatedVendor = hasRated(order.id, order.vendor_id);
+            const hasRatedRider = order.rider_id ? hasRated(order.id, order.rider_id) : false;
 
             return (
               <Card key={order.id} className="border-2 bg-card">
@@ -93,11 +120,11 @@ export default function MyOrders() {
                           </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          {new Date(order.createdAt).toLocaleString()}
+                          {formatOrderDate(order.created_at)}
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-bold">KES {order.totalAmount.toFixed(2)}</p>
+                        <p className="text-2xl font-bold">KES {order.total_amount.toFixed(2)}</p>
                       </div>
                     </div>
 
@@ -107,13 +134,13 @@ export default function MyOrders() {
                         <User className="w-5 h-5" />
                         <div>
                           <p className="text-sm font-bold">Vendor</p>
-                          <p className="text-sm font-semibold">{order.vendorName}</p>
+                          <p className="text-sm font-semibold">{order.vendor_name}</p>
                         </div>
                       </div>
-                      {order.distanceKm && (
+                      {order.distance_km && (
                         <div className="flex items-center gap-2">
                           <MapPin className="w-4 h-4" />
-                          <span className="text-sm font-semibold">{order.distanceKm.toFixed(1)} km away</span>
+                          <span className="text-sm font-semibold">{order.distance_km.toFixed(1)} km away</span>
                         </div>
                       )}
                     </div>
@@ -122,37 +149,47 @@ export default function MyOrders() {
                     <div>
                       <p className="text-base font-bold mb-3">Order Items</p>
                       <div className="space-y-2 border-2 rounded-lg p-4 bg-muted/30">
-                        {order.products.map((product, idx) => (
-                          <div key={idx} className="flex justify-between items-center text-sm p-4 bg-background border-2 rounded-md">
-                            <span className="font-semibold">{product.productName} x {product.quantity}</span>
-                            <span className="font-bold">KES {(product.price * product.quantity).toFixed(2)}</span>
-                          </div>
-                        ))}
+                        <div className="space-y-2">
+                          <h4 className="font-semibold text-sm">Products:</h4>
+                          {order.products.map((item, idx) => (
+                            <div key={idx} className="flex justify-between text-sm">
+                              <span>
+                                {item.quantity}x {item.productName}
+                                {item.unit_label && (
+                                  <span className="text-muted-foreground ml-1">
+                                    ({formatUnitLabel(item.unit_type, item.unit_value, item.unit_label)})
+                                  </span>
+                                )}
+                              </span>
+                              <span>KES {(item.price * item.quantity).toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
                     {/* Rider Info */}
-                    {order.riderName && (
+                    {order.rider_name && (
                       <div className="flex items-center gap-3 p-4 bg-blue-950/50 border-2 border-blue-800 rounded-lg">
                         <Bike className="w-5 h-5 text-blue-400" />
                         <div className="flex-1">
                           <p className="text-sm font-bold">Assigned Rider</p>
-                          <p className="text-sm font-medium text-muted-foreground">{order.riderName}</p>
+                          <p className="text-sm font-medium text-muted-foreground">{order.rider_name}</p>
                         </div>
-                        {order.etaMinutes && (
+                        {order.eta_minutes && (
                           <div className="flex items-center gap-1 text-sm font-medium">
                             <Clock className="w-4 h-4" />
-                            <span>{order.etaMinutes} min</span>
+                            <span>{order.eta_minutes} min</span>
                           </div>
                         )}
                       </div>
                     )}
 
                     {/* Delivery Code for Active Orders */}
-                    {order.deliveryCode && (order.status === 'pending' || order.status === 'assigned' || order.status === 'in_transit') && (
+                    {order.delivery_code && (order.status === 'pending' || order.status === 'assigned' || order.status === 'in_transit') && (
                       <div className="p-4 border-2 border-border rounded-lg text-center">
                         <p className="text-xs font-semibold text-muted-foreground mb-2">YOUR DELIVERY CODE</p>
-                        <p className="text-3xl font-bold tracking-[0.3em]">{order.deliveryCode}</p>
+                        <p className="text-3xl font-bold tracking-[0.3em]">{order.delivery_code}</p>
                         <p className="text-xs text-muted-foreground mt-2">Share this code with the rider upon delivery</p>
                       </div>
                     )}
@@ -161,33 +198,33 @@ export default function MyOrders() {
                     {order.status === 'delivered' && (
                       <div className="flex flex-wrap gap-2">
                         <Button
-                          variant={hasRatedVendor ? "secondary" : "default"}
-                          disabled={hasRatedVendor}
+                          variant={hasRated(order.id, order.vendor_id) ? "secondary" : "default"}
+                          disabled={hasRated(order.id, order.vendor_id)}
                           onClick={() => setRatingDialog({
                             open: true,
-                            toUserId: order.vendorId,
-                            toUserName: order.vendorName,
+                            toUserId: order.vendor_id,
+                            toUserName: order.vendor_name,
                             roleType: 'vendor',
                             orderId: order.id
                           })}
                         >
-                          <Star className={`w-4 h-4 mr-2 ${hasRatedVendor ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                          {hasRatedVendor ? 'Vendor Rated' : 'Rate Vendor'}
+                          <Star className={`w-4 h-4 mr-2 ${hasRated(order.id, order.vendor_id) ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                          {hasRated(order.id, order.vendor_id) ? 'Vendor Rated' : 'Rate Vendor'}
                         </Button>
-                        {order.riderId && order.riderName && (
+                        {order.rider_id && order.rider_name && (
                           <Button
-                            variant={hasRatedRider ? "secondary" : "default"}
-                            disabled={hasRatedRider}
+                            variant={hasRated(order.id, order.rider_id) ? "secondary" : "default"}
+                            disabled={hasRated(order.id, order.rider_id)}
                             onClick={() => setRatingDialog({
                               open: true,
-                              toUserId: order.riderId!,
-                              toUserName: order.riderName!,
+                              toUserId: order.rider_id!,
+                              toUserName: order.rider_name!,
                               roleType: 'rider',
                               orderId: order.id
                             })}
                           >
-                            <Star className={`w-4 h-4 mr-2 ${hasRatedRider ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                            {hasRatedRider ? 'Rider Rated' : 'Rate Rider'}
+                            <Star className={`w-4 h-4 mr-2 ${hasRated(order.id, order.rider_id) ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                            {hasRated(order.id, order.rider_id) ? 'Rider Rated' : 'Rate Rider'}
                           </Button>
                         )}
                       </div>

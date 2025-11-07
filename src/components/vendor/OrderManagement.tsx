@@ -12,6 +12,7 @@ import { Order, DeliveryStatus } from '@/types';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { formatUnitLabel } from '@/lib/categoryUnitMapping';
 
 // Fix for default marker icons
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -51,7 +52,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 };
 
 export default function OrderManagement() {
-  const { orders, updateOrder, riders, updateRider } = useData();
+  const { orders, updateOrder, riders, updateRider, products, updateProduct } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -62,7 +63,7 @@ export default function OrderManagement() {
   });
   const [selectedRiderId, setSelectedRiderId] = useState<string>('');
 
-  const vendorOrders = orders.filter(o => o.vendorId === user?.id);
+  const vendorOrders = orders.filter(o => o.vendor_id === user?.id);
 
   const filteredOrders = filterStatus === 'all' 
     ? vendorOrders 
@@ -75,27 +76,27 @@ export default function OrderManagement() {
     if (!rider) return;
 
     // Calculate ETA based on distance
-    const riderDistance = rider.locationLat && rider.locationLng && assignRiderDialog.order.vendorLocationLat && assignRiderDialog.order.vendorLocationLng
+    const riderDistance = rider.location_lat && rider.location_lng && assignRiderDialog.order.vendor_location_lat && assignRiderDialog.order.vendor_location_lng
       ? calculateDistance(
-          rider.locationLat,
-          rider.locationLng,
-          assignRiderDialog.order.vendorLocationLat,
-          assignRiderDialog.order.vendorLocationLng
+          rider.location_lat,
+          rider.location_lng,
+          assignRiderDialog.order.vendor_location_lat,
+          assignRiderDialog.order.vendor_location_lng
         )
       : 0;
 
     const etaToVendor = Math.ceil(riderDistance * 3); // ~3 min per km
-    const etaToCustomer = assignRiderDialog.order.etaMinutes || 20;
+    const etaToCustomer = assignRiderDialog.order.eta_minutes || 20;
 
     const updatedOrder = {
       ...assignRiderDialog.order,
-      riderId: rider.id,
-      riderName: rider.name,
-      riderLocationLat: rider.locationLat,
-      riderLocationLng: rider.locationLng,
+      rider_id: rider.id,
+      rider_name: rider.name,
+      rider_location_lat: rider.location_lat,
+      rider_location_lng: rider.location_lng,
       status: 'assigned' as DeliveryStatus,
-      etaMinutes: etaToVendor + etaToCustomer,
-      updatedAt: new Date().toISOString(),
+      eta_minutes: etaToVendor + etaToCustomer,
+      updated_at: new Date().toISOString(),
     };
 
     updateOrder(updatedOrder);
@@ -104,11 +105,11 @@ export default function OrderManagement() {
     updateRider({
       ...rider,
       status: 'busy',
-      activeDeliveries: rider.activeDeliveries + 1,
+      active_deliveries: (rider.active_deliveries || 0) + 1,
     });
 
     toast({
-      title: 'Rider Assigned Successfully',
+      title: '✅ Rider Assigned Successfully',
       description: `${rider.name} will arrive in ~${etaToVendor} minutes to pick up the order`,
     });
 
@@ -120,19 +121,19 @@ export default function OrderManagement() {
     const updatedOrder = {
       ...order,
       status: newStatus,
-      updatedAt: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
     // If marking as in_transit, set pickup time
-    if (newStatus === 'in_transit' && !order.pickupTime) {
-      updatedOrder.pickupTime = new Date().toISOString();
-      updatedOrder.pickupConfirmed = true;
+    if (newStatus === 'in_transit' && !order.pickup_time) {
+      updatedOrder.pickup_time = new Date().toISOString();
+      updatedOrder.pickup_confirmed = true;
     }
 
     // If marking as delivered, set delivery time
-    if (newStatus === 'delivered' && !order.deliveryTime) {
-      updatedOrder.deliveryTime = new Date().toISOString();
-      updatedOrder.deliveryConfirmed = true;
+    if (newStatus === 'delivered' && !order.delivery_time) {
+      updatedOrder.delivery_time = new Date().toISOString();
+      updatedOrder.delivery_confirmed = true;
     }
 
     updateOrder(updatedOrder);
@@ -146,7 +147,7 @@ export default function OrderManagement() {
   const getAvailableActions = (order: Order) => {
     const actions: { label: string; status?: DeliveryStatus; action?: () => void; variant?: 'default' | 'outline' }[] = [];
 
-    if (order.status === 'pending' && !order.riderId) {
+    if (order.status === 'pending' && !order.rider_id) {
       actions.push({ 
         label: 'Assign Rider', 
         action: () => {
@@ -157,7 +158,7 @@ export default function OrderManagement() {
       });
     }
 
-    if (order.status === 'pending' && order.riderId) {
+    if (order.status === 'pending' && order.rider_id) {
       actions.push({ label: 'Mark as Preparing', status: 'assigned' });
     }
 
@@ -168,7 +169,7 @@ export default function OrderManagement() {
     return actions;
   };
 
-  const getRiderInfo = (riderId?: string) => {
+  const getRiderInfo = (riderId?: string | null) => {
     if (!riderId) return null;
     return riders.find(r => r.id === riderId);
   };
@@ -177,17 +178,17 @@ export default function OrderManagement() {
   const getAvailableRiders = (order: Order) => {
     const availableRiders = riders.filter(r => r.status === 'available');
     
-    if (!order.vendorLocationLat || !order.vendorLocationLng) {
+    if (!order.vendor_location_lat || !order.vendor_location_lng) {
       return availableRiders;
     }
 
     return availableRiders.map(rider => {
-      const distance = rider.locationLat && rider.locationLng
+      const distance = rider.location_lat && rider.location_lng
         ? calculateDistance(
-            order.vendorLocationLat!,
-            order.vendorLocationLng!,
-            rider.locationLat,
-            rider.locationLng
+            order.vendor_location_lat!,
+            order.vendor_location_lng!,
+            rider.location_lat,
+            rider.location_lng
           )
         : 999;
       
@@ -228,7 +229,7 @@ export default function OrderManagement() {
           ) : (
             <div className="space-y-4">
               {filteredOrders.map((order) => {
-                const rider = getRiderInfo(order.riderId);
+                const rider = getRiderInfo(order.rider_id);
                 return (
                   <Card key={order.id} className="border-2 bg-card">
                     <CardContent className="pt-6">
@@ -243,11 +244,11 @@ export default function OrderManagement() {
                               </Badge>
                             </div>
                             <p className="text-sm text-muted-foreground">
-                              {new Date(order.createdAt).toLocaleString()}
+                              {new Date(order.created_at).toLocaleString()}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-2xl font-bold">KES {order.totalAmount.toFixed(2)}</p>
+                            <p className="text-2xl font-bold">KES {order.total_amount.toFixed(2)}</p>
                           </div>
                         </div>
 
@@ -257,13 +258,13 @@ export default function OrderManagement() {
                             <User className="w-5 h-5" />
                             <div>
                               <p className="text-sm font-bold">Customer</p>
-                              <p className="text-sm font-semibold">{order.customerName}</p>
+                              <p className="text-sm font-semibold">{order.customer_name}</p>
                             </div>
                           </div>
-                          {order.distanceKm && (
+                          {order.distance_km && (
                             <div className="flex items-center gap-2">
                               <MapPin className="w-4 h-4" />
-                              <span className="text-sm font-semibold">{order.distanceKm.toFixed(1)} km away</span>
+                              <span className="text-sm font-semibold">{order.distance_km.toFixed(1)} km away</span>
                             </div>
                           )}
                         </div>
@@ -274,7 +275,7 @@ export default function OrderManagement() {
                           <div className="space-y-2 border-2 rounded-lg p-4 bg-muted/30">
                             {order.products.map((product, idx) => (
                               <div key={idx} className="flex justify-between items-center text-sm p-4 bg-background border-2 rounded-md">
-                                <span className="font-semibold">{product.productName} x {product.quantity}</span>
+                                <span className="font-semibold">{product.product_name} x {product.quantity}</span>
                                 <span className="font-bold">KES {(product.price * product.quantity).toFixed(2)}</span>
                               </div>
                             ))}
@@ -293,10 +294,10 @@ export default function OrderManagement() {
                               <Phone className="w-4 h-4" />
                               <span className="text-sm font-medium">{rider.phone}</span>
                             </div>
-                            {order.etaMinutes && (
+                            {order.eta_minutes && (
                               <div className="flex items-center gap-1 text-sm font-medium">
                                 <Clock className="w-4 h-4" />
-                                <span>{order.etaMinutes} min</span>
+                                <span>{order.eta_minutes} min</span>
                               </div>
                             )}
                           </div>
@@ -313,7 +314,7 @@ export default function OrderManagement() {
                               {action.label}
                             </Button>
                           ))}
-                          {order.customerLocationLat && order.customerLocationLng && (
+                          {order.customer_location_lat && order.customer_location_lng && (
                             <Button
                               variant="outline"
                               onClick={() => setSelectedOrder(order)}
@@ -394,7 +395,7 @@ export default function OrderManagement() {
                             <span className="font-semibold">{rider.rating?.toFixed(1) || '5.0'}</span>
                           </div>
                           <Badge variant="outline" className="text-xs">
-                            {rider.totalDeliveries || 0} deliveries
+                            {rider.total_deliveries || 0} deliveries
                           </Badge>
                         </div>
                       </div>
@@ -422,7 +423,7 @@ export default function OrderManagement() {
       </Dialog>
 
       {/* Map Modal */}
-      {selectedOrder && selectedOrder.customerLocationLat && selectedOrder.customerLocationLng && (
+      {selectedOrder && selectedOrder.customer_location_lat && selectedOrder.customer_location_lng && (
         <Card className="bg-card">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -435,7 +436,7 @@ export default function OrderManagement() {
           <CardContent>
             <div className="h-[400px] rounded-lg overflow-hidden">
               <MapContainer
-                center={[selectedOrder.customerLocationLat, selectedOrder.customerLocationLng]}
+                center={[selectedOrder.customer_location_lat, selectedOrder.customer_location_lng]}
                 zoom={13}
                 style={{ height: '100%', width: '100%' }}
               >
@@ -443,19 +444,19 @@ export default function OrderManagement() {
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
-                <Marker position={[selectedOrder.customerLocationLat, selectedOrder.customerLocationLng]}>
+                <Marker position={[selectedOrder.customer_location_lat, selectedOrder.customer_location_lng]}>
                   <Popup>
                     <div className="text-sm">
-                      <p className="font-semibold">{selectedOrder.customerName}</p>
+                      <p className="font-semibold">{selectedOrder.customer_name}</p>
                       <p className="text-muted-foreground">Delivery Location</p>
                     </div>
                   </Popup>
                 </Marker>
-                {selectedOrder.riderLocationLat && selectedOrder.riderLocationLng && (
-                  <Marker position={[selectedOrder.riderLocationLat, selectedOrder.riderLocationLng]}>
+                {selectedOrder.rider_location_lat && selectedOrder.rider_location_lng && (
+                  <Marker position={[selectedOrder.rider_location_lat, selectedOrder.rider_location_lng]}>
                     <Popup>
                       <div className="text-sm">
-                        <p className="font-semibold">{selectedOrder.riderName}</p>
+                        <p className="font-semibold">{selectedOrder.rider_name}</p>
                         <p className="text-muted-foreground">Rider Location</p>
                       </div>
                     </Popup>

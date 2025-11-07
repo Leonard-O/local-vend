@@ -23,7 +23,10 @@ export default function LoginPage() {
   
   // Register form state
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [role, setRole] = useState<UserRole>('customer');
+  const [businessName, setBusinessName] = useState('');
+  const [address, setAddress] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +48,40 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      await register(email, password, name, role);
+      const additionalData: any = {};
+      
+      if (role === 'vendor') {
+        if (!businessName || !address) {
+          setError('Business name and address are required for vendors');
+          setIsLoading(false);
+          return;
+        }
+        additionalData.businessName = businessName;
+        additionalData.address = address;
+        additionalData.locationLat = 40.7128 + (Math.random() - 0.5) * 0.1;
+        additionalData.locationLng = -74.0060 + (Math.random() - 0.5) * 0.1;
+      } else if (role === 'customer') {
+        additionalData.address = address || '';
+        additionalData.locationLat = 40.7489 + (Math.random() - 0.5) * 0.1;
+        additionalData.locationLng = -73.9680 + (Math.random() - 0.5) * 0.1;
+      } else if (role === 'rider') {
+        additionalData.locationLat = 40.7580 + (Math.random() - 0.5) * 0.1;
+        additionalData.locationLng = -73.9855 + (Math.random() - 0.5) * 0.1;
+      }
+
+      await register(email, password, name, phone, role, additionalData);
+      
+      // Wait a moment for the database record to be created
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Try to auto-login
+      try {
+        await login(email, password);
+      } catch (loginError) {
+        // If auto-login fails, just show success message
+        console.log('Auto-login failed, user can login manually:', loginError);
+        setError('');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
@@ -154,6 +190,18 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="register-phone">Phone Number</Label>
+                  <Input
+                    id="register-phone"
+                    type="tel"
+                    placeholder="+254 XXX XXX XXX"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="register-password">Password</Label>
                   <Input
                     id="register-password"
@@ -178,6 +226,49 @@ export default function LoginPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {role === 'vendor' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="register-business">Business Name</Label>
+                      <Input
+                        id="register-business"
+                        type="text"
+                        placeholder="Your business name"
+                        value={businessName}
+                        onChange={(e) => setBusinessName(e.target.value)}
+                        required
+                        className="h-11"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="register-address">Business Address</Label>
+                      <Input
+                        id="register-address"
+                        type="text"
+                        placeholder="Your business address"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        required
+                        className="h-11"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {role === 'customer' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="register-address">Delivery Address (Optional)</Label>
+                    <Input
+                      id="register-address"
+                      type="text"
+                      placeholder="Your delivery address"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className="h-11"
+                    />
+                  </div>
+                )}
 
                 {error && (
                   <Alert variant="destructive">
